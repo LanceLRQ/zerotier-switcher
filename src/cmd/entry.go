@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/LanceLRQ/zerotier-switcher/src/configs"
 	"github.com/LanceLRQ/zerotier-switcher/src/tools"
+	"github.com/LanceLRQ/zerotier-switcher/src/views"
+	tea "github.com/charmbracelet/bubbletea"
 	"log"
 	"os"
 	"runtime"
@@ -60,7 +62,7 @@ func CommandEntry(version string) {
 				cfg.Planets = append(cfg.Planets, configs.ZerotierPlanetFile{
 					Hash:         hex.EncodeToString(world.Signature[:32]),
 					Remark:       "Default",
-					Data:         world.ToBase64String(),
+					Data:         world.ToBase64(),
 					CreateTime:   world.Timestamp,
 					WorldId:      world.ID,
 					WorldType:    world.Type,
@@ -71,9 +73,14 @@ func CommandEntry(version string) {
 				fmt.Println("Press any key to continue")
 				_, _ = fmt.Scanf("%s")
 			}
-			// TODO 交接给GUI
-
-			return nil
+			// 交接给UI
+			model, err := views.CreateAppView(cfg)
+			if err != nil {
+				return err
+			}
+			program := tea.NewProgram(model, tea.WithAltScreen())
+			_, err = program.Run()
+			return err
 		},
 	}
 

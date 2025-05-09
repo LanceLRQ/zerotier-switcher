@@ -216,7 +216,7 @@ func (ia *InetAddress) String() string {
 	return ipStr
 }
 
-func (w *World) ToBase64String() string {
+func (w World) ToBase64() string {
 	return base64.StdEncoding.EncodeToString(w.RawData)
 }
 

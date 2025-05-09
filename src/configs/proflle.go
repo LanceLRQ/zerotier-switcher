@@ -23,6 +23,8 @@ type ZerotierPlanetFile struct {
 	WorldType    uint8  `json:"world_type"` // (1=Planet, 127=Moon)
 	RootIdentity string `json:"root_identity"`
 	RootEndpoint string `json:"root_endpoint"` // Ip address of the planet file (view)
+
+	AutoJoinNetwork string `json:"auto_join_network"`
 }
 
 // GetDefaultConfigPath 获取当前程序的配置文件默认路径
