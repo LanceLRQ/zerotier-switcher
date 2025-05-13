@@ -17,22 +17,26 @@ func (i PlanetItem) Title() string       { return i.Name }
 func (i PlanetItem) Description() string { return i.Desc }
 
 func CreatePlanetListView(cfg *configs.ZerotierSwitcherProfile) list.Model {
-	planetListItems := make([]list.Item, len(cfg.Planets)+1)
-	for i := range cfg.Planets {
+	l := list.New(RenderPlanetListItem(cfg.Planets), list.NewDefaultDelegate(), 0, 0)
+	l.SetShowStatusBar(false)
+	l.Title = "Planet List"
+	return l
+}
+
+func RenderPlanetListItem(planets []configs.ZerotierPlanetFile) []list.Item {
+	planetListItems := make([]list.Item, len(planets)+1)
+	for i := range planets {
 		planetListItems[i] = PlanetItem{
-			Planet: &cfg.Planets[i],
-			Id:     cfg.Planets[i].Hash,
-			Name:   cfg.Planets[i].Remark,
-			Desc:   cfg.Planets[i].RootEndpoint,
+			Planet: &planets[i],
+			Id:     planets[i].Hash,
+			Name:   planets[i].Remark,
+			Desc:   planets[i].RootEndpoint,
 		}
 	}
-	planetListItems[len(cfg.Planets)] = PlanetItem{
+	planetListItems[len(planets)] = PlanetItem{
 		Id:   "add",
 		Name: "+ Add new",
 		Desc: "select a zerotier planet file",
 	}
-	l := list.New(planetListItems, list.NewDefaultDelegate(), 0, 0)
-	l.SetShowStatusBar(false)
-	l.Title = "Planet List"
-	return l
+	return planetListItems
 }

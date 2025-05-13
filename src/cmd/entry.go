@@ -69,7 +69,7 @@ func CommandEntry(version string) {
 					RootIdentity: root.Identity.String(),
 					RootEndpoint: ep.String(),
 				})
-				_ = configs.WriteAppConfig(cfgFile, cfg)
+				_ = cfg.WriteAppConfig()
 				fmt.Println("Press any key to continue")
 				_, _ = fmt.Scanf("%s")
 			}

@@ -10,6 +10,7 @@ import (
 )
 
 type ZerotierSwitcherProfile struct {
+	filePath            string
 	Planets             []ZerotierPlanetFile `json:"planets"`
 	ZerotierProfilePath string               `json:"zerotier_profile_path"` // custom zerotier profile path
 }
@@ -58,9 +59,10 @@ func GetZerotierProfileFolder() (string, error) {
 	}
 }
 
-func GetDefaultZerotierSwitcherProfile() ZerotierSwitcherProfile {
+func GetDefaultZerotierSwitcherProfile(path string) ZerotierSwitcherProfile {
 	profileFolder, _ := GetZerotierProfileFolder()
 	return ZerotierSwitcherProfile{
+		filePath:            path,
 		Planets:             []ZerotierPlanetFile{},
 		ZerotierProfilePath: profileFolder,
 	}
@@ -69,31 +71,36 @@ func GetDefaultZerotierSwitcherProfile() ZerotierSwitcherProfile {
 // ReadAppConfig 读取配置
 func ReadAppConfig(path string) (*ZerotierSwitcherProfile, error) {
 	data, err := os.ReadFile(path)
-	cfg := GetDefaultZerotierSwitcherProfile()
+	cfg := GetDefaultZerotierSwitcherProfile(path)
 	if os.IsNotExist(err) {
-		err = WriteAppConfig(path, &cfg)
+		err = cfg.WriteAppConfig()
 		return &cfg, err
 	} else if err != nil {
 		return nil, err
 	}
 
 	err = json.Unmarshal(data, &cfg)
+	cfg.filePath = path
 	return &cfg, err
 }
 
+func (c ZerotierSwitcherProfile) SetConfigPath(path string) {
+	c.filePath = path
+}
+
 // WriteAppConfig 写入配置
-func WriteAppConfig(path string, config *ZerotierSwitcherProfile) error {
+func (c ZerotierSwitcherProfile) WriteAppConfig() error {
 	// 获取配置文件路径
-	data, err := json.MarshalIndent(config, "", "\t")
+	data, err := json.MarshalIndent(c, "", "\t")
 	if err != nil {
 		return err
 	}
 
 	// 确保目录存在
-	dir := filepath.Dir(path)
+	dir := filepath.Dir(c.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(c.filePath, data, 0644)
 }
