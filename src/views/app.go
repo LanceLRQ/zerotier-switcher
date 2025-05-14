@@ -16,7 +16,7 @@ import (
 )
 
 var planetListStyle = lipgloss.NewStyle().Margin(1, 2)
-var filePickerStyle = lipgloss.NewStyle().Margin(2, 2)
+var filePickerStyle = lipgloss.NewStyle().Margin(4, 2)
 var filePickerErrorStyle = lipgloss.NewStyle().Background(lipgloss.Color("9")).Foreground(lipgloss.Color("15"))
 
 const MaxRemarkLength = 64
@@ -31,6 +31,7 @@ type AppViewModel struct {
 	errorMessage       string
 	filePickerSelected string
 	remarkInput        textinput.Model
+	confirmCursor      int
 }
 
 func (m AppViewModel) Init() tea.Cmd {
@@ -42,15 +43,30 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.screen == "file_picker" {
+		if m.errorMessage != "" {
 			m.errorMessage = ""
 		}
 		switch msg.String() {
+		case "down", "w", "j":
+			if m.screen == "delete_confirm" {
+				m.confirmCursor++
+				if m.confirmCursor >= 2 {
+					m.confirmCursor = 0
+				}
+			}
+		case "up", "s", "k":
+			if m.screen == "delete_confirm" {
+				m.confirmCursor--
+				if m.confirmCursor < 0 {
+					m.confirmCursor = 1
+				}
+			}
+
 		case "backspace":
 			switch m.screen {
 			case "action":
 				m.screen = "list"
-			case "view_planet":
+			case "view_planet", "delete_confirm":
 				m.screen = "action"
 			}
 		case "esc":
@@ -59,7 +75,7 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "action", "file_picker", "rename":
 				m.screen = "list"
-			case "view_planet":
+			case "view_planet", "delete_confirm":
 				m.screen = "action"
 			}
 			return m, nil
@@ -124,6 +140,13 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case "view":
 						m.screen = "view_planet"
 						return m, nil
+					case "delete":
+						if len(m.config.Planets) <= 1 {
+							m.errorMessage = fmt.Sprintf("The last planet file cannot be delete. ")
+							break
+						}
+						m.confirmCursor = 1
+						m.screen = "delete_confirm"
 					}
 				}
 			case "rename":
@@ -142,7 +165,22 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.planetList.SetItems(RenderPlanetListItem(m.config.Planets))
 				m.screen = "action"
 				m.errorMessage = ""
-				return m, cmd
+			case "delete_confirm":
+				if m.confirmCursor == 0 {
+					err := m.removePlanet()
+					if err != nil {
+						m.errorMessage = fmt.Sprintf("Save profile error: %s", err.Error())
+						break
+					}
+					// rebuild list
+					m.planetList.SetItems(RenderPlanetListItem(m.config.Planets))
+					m.screen = "list"
+					m.planetFile = nil
+					m.errorMessage = ""
+				} else {
+					m.screen = "action"
+					m.errorMessage = ""
+				}
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -168,32 +206,36 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m AppViewModel) View() string {
+	var s strings.Builder
+
 	switch m.screen {
 	case "list":
-		return m.planetList.View()
+		s.WriteString(m.planetList.View())
 	case "action":
-		return m.actionList.View()
+		s.WriteString(m.actionList.View())
 	case "file_picker":
-		var s strings.Builder
 		s.WriteString("\n Please pick a zerotier planet file.")
 		s.WriteString("\n\n" + m.filePickerView.View() + "\n")
-		if m.errorMessage != "" {
-			s.WriteString(filePickerErrorStyle.Render(m.errorMessage))
-		}
-		return s.String()
+
 	case "rename":
-		return fmt.Sprintf(
+		s.WriteString(fmt.Sprintf(
 			"Write a remark for the planet file:\n\n%s\n(%d/%d)\n\n%s",
 			m.remarkInput.View(),
 			len(m.remarkInput.Value()),
 			MaxRemarkLength,
 			"(esc to back)",
-		) + "\n"
+		) + "\n")
 	case "view_planet":
-		return m.getPlanetFileDetailView() + "\n\n(esc to back)"
+		s.WriteString(m.renderPlanetFileDetailView() + "\n\n(esc to back)")
+	case "delete_confirm":
+		s.WriteString(m.renderDeleteConfirm() + "\n\n(esc to back)")
 	}
 
-	return ""
+	if m.errorMessage != "" {
+		s.WriteString("\n" + filePickerErrorStyle.Render(m.errorMessage))
+	}
+
+	return s.String()
 }
 
 func (m AppViewModel) parsePlanetFile() (*tools.World, error) {
@@ -240,6 +282,17 @@ func (m AppViewModel) savePlanetChange() error {
 	}
 	return m.config.WriteAppConfig()
 }
+func (m AppViewModel) removePlanet() error {
+	var pList []configs.ZerotierPlanetFile
+	for i := 0; i < len(m.config.Planets); i++ {
+		item := m.config.Planets[i]
+		if item.Hash != m.planetFile.Hash {
+			pList = append(pList, item)
+		}
+	}
+	m.config.Planets = pList
+	return m.config.WriteAppConfig()
+}
 func (m AppViewModel) isPlanetFileExists(p *configs.ZerotierPlanetFile) bool {
 	for i := 0; i < len(m.config.Planets); i++ {
 		item := m.config.Planets[i]
@@ -257,7 +310,7 @@ func (m AppViewModel) getActionPageTitle() string {
 	return fmt.Sprintf("Planet file: %s (%v)", rTitle, m.planetFile.RootEndpoint)
 }
 
-func (m AppViewModel) getPlanetFileDetailView() string {
+func (m AppViewModel) renderPlanetFileDetailView() string {
 	if m.planetFile == nil {
 		return ""
 	}
@@ -282,6 +335,22 @@ func (m AppViewModel) getPlanetFileDetailView() string {
 		}
 	}
 	return sb.String()
+}
+
+func (m AppViewModel) renderDeleteConfirm() string {
+	s := strings.Builder{}
+	s.WriteString("Do you want to delete the planet file?\n\n")
+	choices := []string{"Yes", "No"}
+	for i := 0; i < len(choices); i++ {
+		if m.confirmCursor == i {
+			s.WriteString("(•) ")
+		} else {
+			s.WriteString("( ) ")
+		}
+		s.WriteString(choices[i])
+		s.WriteString("\n")
+	}
+	return s.String()
 }
 
 func CreateAppView(cfg *configs.ZerotierSwitcherProfile) (*AppViewModel, error) {
