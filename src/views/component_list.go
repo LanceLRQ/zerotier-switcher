@@ -16,6 +16,16 @@ func (i PlanetItem) FilterValue() string { return i.Name }
 func (i PlanetItem) Title() string       { return i.Name }
 func (i PlanetItem) Description() string { return i.Desc }
 
+type ActionItem struct {
+	Id   string
+	Name string
+	Desc string
+}
+
+func (i ActionItem) FilterValue() string { return "" }
+func (i ActionItem) Title() string       { return i.Name }
+func (i ActionItem) Description() string { return i.Desc }
+
 func CreatePlanetListView(cfg *configs.ZerotierSwitcherProfile) list.Model {
 	l := list.New(RenderPlanetListItem(cfg.Planets), list.NewDefaultDelegate(), 0, 0)
 	l.SetShowStatusBar(false)
@@ -40,16 +50,6 @@ func RenderPlanetListItem(planets []configs.ZerotierPlanetFile) []list.Item {
 	}
 	return planetListItems
 }
-
-type ActionItem struct {
-	Id   string
-	Name string
-	Desc string
-}
-
-func (i ActionItem) FilterValue() string { return "" }
-func (i ActionItem) Title() string       { return i.Name }
-func (i ActionItem) Description() string { return i.Desc }
 
 func CreateActionListView() list.Model {
 	actionList := []list.Item{

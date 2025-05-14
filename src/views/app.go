@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -49,7 +50,8 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.screen {
 			case "action":
 				m.screen = "list"
-				return m, nil
+			case "view_planet":
+				m.screen = "action"
 			}
 		case "esc":
 			switch m.screen {
@@ -57,6 +59,8 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "action", "file_picker", "rename":
 				m.screen = "list"
+			case "view_planet":
+				m.screen = "action"
 			}
 			return m, nil
 		case "ctrl+c":
@@ -68,7 +72,6 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if ok {
 					if p.Id == "add" {
 						m.screen = "file_picker"
-						m.filePickerView.CurrentDirectory, _ = os.UserHomeDir()
 						return m, m.filePickerView.Init()
 					} else {
 						m.planetFile = p.Planet
@@ -78,27 +81,36 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "file_picker":
 				m.filePickerView, cmd = m.filePickerView.Update(msg)
-				if didSelect, path := m.filePickerView.DidSelectFile(msg); didSelect {
+				if didSelect, sPath := m.filePickerView.DidSelectFile(msg); didSelect {
 					// Get the path of the selected file.
-					m.filePickerSelected = path
+					s, err := os.Stat(sPath)
+					if err != nil || s.IsDir() {
+						break
+					}
+					m.filePickerSelected = sPath
+
+					world, err := m.parsePlanetFile()
+					if err != nil {
+						m.errorMessage = fmt.Sprintf("Not a valid planet file: %s", err.Error())
+						break
+					}
+					planet := m.makePlanetFileItem(world, filepath.Base(sPath))
+					if m.isPlanetFileExists(planet) {
+						m.errorMessage = fmt.Sprintf("Planet file (%s) exists", planet.RootIdentity[:8])
+						break
+					}
+					m.config.Planets = append(m.config.Planets, *planet)
+					err = m.config.WriteAppConfig()
+					if err != nil {
+						m.errorMessage = fmt.Sprintf("Save profile error: %s", err.Error())
+						break
+					}
+					// rebuild list
+					m.planetList.SetItems(RenderPlanetListItem(m.config.Planets))
+					// Back to list
+					m.screen = "list"
+					m.errorMessage = ""
 				}
-				world, err := m.parsePlanetFile()
-				if err != nil {
-					m.errorMessage = fmt.Sprintf("Not a valid planet file: %s", err.Error())
-					break
-				}
-				planet := m.makePlanetFileItem(world)
-				m.config.Planets = append(m.config.Planets, *planet)
-				err = m.config.WriteAppConfig()
-				if err != nil {
-					m.errorMessage = fmt.Sprintf("Save profile error: %s", err.Error())
-					break
-				}
-				// rebuild list
-				m.planetList.SetItems(RenderPlanetListItem(m.config.Planets))
-				// Back to list
-				m.screen = "list"
-				m.errorMessage = ""
 				return m, cmd
 			case "action":
 				aItem, ok := m.actionList.SelectedItem().(ActionItem)
@@ -109,6 +121,9 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.remarkInput.SetValue(m.planetFile.Remark)
 						m.remarkInput.SetCursor(0)
 						return m, textinput.Blink
+					case "view":
+						m.screen = "view_planet"
+						return m, nil
 					}
 				}
 			case "rename":
@@ -174,6 +189,8 @@ func (m AppViewModel) View() string {
 			MaxRemarkLength,
 			"(esc to back)",
 		) + "\n"
+	case "view_planet":
+		return m.getPlanetFileDetailView() + "\n\n(esc to back)"
 	}
 
 	return ""
@@ -190,7 +207,7 @@ func (m AppViewModel) parsePlanetFile() (*tools.World, error) {
 	}
 	return world, nil
 }
-func (m AppViewModel) makePlanetFileItem(world *tools.World) *configs.ZerotierPlanetFile {
+func (m AppViewModel) makePlanetFileItem(world *tools.World, fileName string) *configs.ZerotierPlanetFile {
 	var root tools.Root
 	var ep tools.InetAddress
 	if len(world.Roots) > 0 {
@@ -199,9 +216,12 @@ func (m AppViewModel) makePlanetFileItem(world *tools.World) *configs.ZerotierPl
 			ep = root.StableEndpoints[0]
 		}
 	}
+	if fileName == "" {
+		fileName = ep.String()
+	}
 	return &configs.ZerotierPlanetFile{
 		Hash:         hex.EncodeToString(world.Signature[:32]),
-		Remark:       ep.String(),
+		Remark:       fileName,
 		Data:         world.ToBase64(),
 		CreateTime:   world.Timestamp,
 		WorldId:      world.ID,
@@ -220,12 +240,48 @@ func (m AppViewModel) savePlanetChange() error {
 	}
 	return m.config.WriteAppConfig()
 }
+func (m AppViewModel) isPlanetFileExists(p *configs.ZerotierPlanetFile) bool {
+	for i := 0; i < len(m.config.Planets); i++ {
+		item := m.config.Planets[i]
+		if item.Hash == p.Hash {
+			return true
+		}
+	}
+	return false
+}
 func (m AppViewModel) getActionPageTitle() string {
 	rTitle := m.planetFile.Remark
 	if len(rTitle) > 16 {
 		rTitle = rTitle[:16] + "..."
 	}
 	return fmt.Sprintf("Planet file: %s (%v)", rTitle, m.planetFile.RootEndpoint)
+}
+
+func (m AppViewModel) getPlanetFileDetailView() string {
+	if m.planetFile == nil {
+		return ""
+	}
+	world, err := tools.ParsePlanetBase64(m.planetFile.Data)
+	if err != nil {
+		return err.Error()
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintln("ZeroTier Planet Information:"))
+	sb.WriteString(fmt.Sprintf("  ID: %d\n", world.ID))
+	sb.WriteString(fmt.Sprintf("  Type: %d (1=Planet, 127=Moon)\n", world.Type))
+	sb.WriteString(fmt.Sprintf("  Timestamp: %d\n", world.Timestamp))
+	sb.WriteString(fmt.Sprintf("  Update Signer Public Key: %s\n", hex.EncodeToString(world.UpdatesMustBeSignedBy[:])))
+	sb.WriteString(fmt.Sprintf("  Signature: %s...\n", hex.EncodeToString(world.Signature[:16])))
+	sb.WriteString(fmt.Sprintf("  Number of Roots: %d\n", len(world.Roots)))
+
+	for i, root := range world.Roots {
+		sb.WriteString(fmt.Sprintf("\nRoot Server %d:\n", i+1))
+		sb.WriteString(fmt.Sprintf("  Identity: %s\n", root.Identity.String()))
+		for j, ep := range root.StableEndpoints {
+			sb.WriteString(fmt.Sprintf("  Endpoint %d: %s\n", j+1, ep.String()))
+		}
+	}
+	return sb.String()
 }
 
 func CreateAppView(cfg *configs.ZerotierSwitcherProfile) (*AppViewModel, error) {
@@ -237,5 +293,6 @@ func CreateAppView(cfg *configs.ZerotierSwitcherProfile) (*AppViewModel, error) 
 		filePickerView: filepicker.New(),
 		remarkInput:    CreateRemarkInput("remark text", MaxRemarkLength),
 	}
+	m.filePickerView.CurrentDirectory, _ = os.UserHomeDir()
 	return &m, nil
 }
