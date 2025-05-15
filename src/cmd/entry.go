@@ -79,6 +79,7 @@ func CommandEntry(version string) {
 				return err
 			}
 			program := tea.NewProgram(model, tea.WithAltScreen())
+			model.Program = program
 			_, err = program.Run()
 			return err
 		},

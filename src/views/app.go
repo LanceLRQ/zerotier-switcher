@@ -7,6 +7,7 @@ import (
 	"github.com/LanceLRQ/zerotier-switcher/src/tools"
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,11 +19,23 @@ import (
 var planetListStyle = lipgloss.NewStyle().Margin(1, 2)
 var filePickerStyle = lipgloss.NewStyle().Margin(4, 2)
 var filePickerErrorStyle = lipgloss.NewStyle().Background(lipgloss.Color("9")).Foreground(lipgloss.Color("15"))
+var filePickerSuccessStyle = lipgloss.NewStyle().Background(lipgloss.Color("10")).Foreground(lipgloss.Color("15"))
+var activateTitleStyle = lipgloss.NewStyle().Background(lipgloss.Color("12")).Foreground(lipgloss.Color("15"))
+var progressBarPadding = 2
+var progressBarMaxWidth = 80
+var maxActivateStep = float64(7)
+
+type progressMsg struct {
+	step  int
+	desc  string
+	error bool
+}
 
 const MaxRemarkLength = 64
 const MaxAutoJoinNetworkLength = 64
 
 type AppViewModel struct {
+	Program            *tea.Program
 	screen             string
 	config             *configs.ZerotierSwitcherProfile
 	planetFile         *configs.ZerotierPlanetFile
@@ -30,9 +43,14 @@ type AppViewModel struct {
 	actionList         list.Model
 	filePickerView     filepicker.Model
 	errorMessage       string
+	successMessage     string
 	filePickerSelected string
 	remarkInput        textinput.Model
 	autoJoinInput      textinput.Model
+	progressBar        progress.Model
+	activateStep       int
+	activateLock       bool
+	activateStepDesc   string
 	confirmCursor      int
 }
 
@@ -47,6 +65,9 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.errorMessage != "" {
 			m.errorMessage = ""
+		}
+		if m.successMessage != "" {
+			m.successMessage = ""
 		}
 		switch msg.String() {
 		case "down", "w", "j":
@@ -79,6 +100,10 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = "list"
 			case "activate", "view_planet", "delete_confirm", "rename", "auto_join":
 				m.screen = "action"
+			case "activate_process":
+				if !m.activateLock {
+					m.screen = "list"
+				}
 			}
 			return m, nil
 		case "ctrl+c":
@@ -134,6 +159,9 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				aItem, ok := m.actionList.SelectedItem().(ActionItem)
 				if ok {
 					switch aItem.Id {
+					case "activate":
+						m.screen = "activate"
+						return m, nil
 					case "rename":
 						m.screen = "rename"
 						m.remarkInput.SetValue(m.planetFile.Remark)
@@ -193,6 +221,32 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.screen = "action"
 					m.errorMessage = ""
 				}
+			case "activate":
+				m.activateStep = 0
+				cmd = m.progressBar.SetPercent(0)
+				m.screen = "activate_process"
+				m.activateLock = true
+				go func() {
+					currentStep := 0
+					if err := tools.ReplacePlanetAndJoinNetwork(
+						m.planetFile.Data,
+						m.planetFile.AutoJoinNetwork,
+						func(step int, desc string) {
+							currentStep = step
+							m.Program.Send(progressMsg{
+								step:  step,
+								desc:  desc,
+								error: false,
+							})
+						},
+					); err != nil {
+						m.Program.Send(progressMsg{
+							step:  currentStep,
+							desc:  filePickerErrorStyle.Width(50).Render(err.Error()),
+							error: true,
+						})
+					}
+				}()
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -201,6 +255,24 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.planetList.SetSize(msg.Width-h, msg.Height-v)
 		m.actionList.SetSize(msg.Width-h, msg.Height-v)
 		m.filePickerView.SetHeight(msg.Height - fv)
+		m.progressBar.Width = msg.Width - progressBarPadding*2 - 4
+		if m.progressBar.Width > progressBarMaxWidth {
+			m.progressBar.Width = progressBarMaxWidth
+		}
+	case progressMsg:
+		m.activateStep = msg.step
+		m.activateStepDesc = msg.desc
+		if msg.error || msg.step >= int(maxActivateStep) {
+			m.activateLock = false
+		} else {
+			m.activateLock = true
+		}
+		cmd = m.progressBar.SetPercent(float64(m.activateStep) / maxActivateStep)
+		// FrameMsg is sent when the progress bar wants to animate itself
+	case progress.FrameMsg:
+		progressModel, cmd := m.progressBar.Update(msg)
+		m.progressBar = progressModel.(progress.Model)
+		return m, cmd
 	}
 
 	switch m.screen {
@@ -221,6 +293,8 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m AppViewModel) View() string {
 	var s strings.Builder
+
+	pad := strings.Repeat(" ", progressBarPadding)
 
 	switch m.screen {
 	case "list":
@@ -251,10 +325,24 @@ func (m AppViewModel) View() string {
 		s.WriteString(m.renderPlanetFileDetailView() + "\n\n(esc to back)")
 	case "delete_confirm":
 		s.WriteString(m.renderDeleteConfirm() + "\n\n(esc to back)")
+	case "activate":
+		s.WriteString("\n" + pad)
+		s.WriteString(m.renderActivateView() + "\n\n(esc to back)")
+	case "activate_process":
+		s.WriteString("\n" + pad + activateTitleStyle.Render("Processing"))
+		s.WriteString("\n\n" + pad + m.progressBar.View() + "\n\n")
+		s.WriteString(m.activateStepDesc)
+		if !m.activateLock {
+			s.WriteString("\n\n(esc to back)")
+		}
+		s.WriteString("\n\n")
 	}
 
 	if m.errorMessage != "" {
 		s.WriteString("\n" + filePickerErrorStyle.Render(m.errorMessage))
+	}
+	if m.successMessage != "" {
+		s.WriteString("\n" + filePickerSuccessStyle.Render(m.successMessage))
 	}
 
 	return s.String()
@@ -358,6 +446,32 @@ func (m AppViewModel) renderPlanetFileDetailView() string {
 	}
 	return sb.String()
 }
+func (m AppViewModel) renderActivateView() string {
+	if m.planetFile == nil {
+		return ""
+	}
+	world, err := tools.ParsePlanetBase64(m.planetFile.Data)
+	if err != nil {
+		return err.Error()
+	}
+	var sb strings.Builder
+	sb.WriteString(activateTitleStyle.Render("Activate planet file") + "\n\n")
+
+	sb.WriteString(fmt.Sprintln("ZeroTier Planet Information:"))
+	sb.WriteString(fmt.Sprintf("  ID: %d\n", world.ID))
+	sb.WriteString(fmt.Sprintf("  Type: %d (1=Planet, 127=Moon)\n", world.Type))
+
+	for i, root := range world.Roots {
+		sb.WriteString(fmt.Sprintf("\nRoot Server %d:\n", i+1))
+		sb.WriteString(fmt.Sprintf("  Identity: %s\n", root.Identity.String()))
+		for j, ep := range root.StableEndpoints {
+			sb.WriteString(fmt.Sprintf("  Endpoint %d: %s\n", j+1, ep.String()))
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\nJoin network: %s\n", m.planetFile.AutoJoinNetwork))
+	return sb.String()
+}
 
 func (m AppViewModel) renderDeleteConfirm() string {
 	s := strings.Builder{}
@@ -384,6 +498,7 @@ func CreateAppView(cfg *configs.ZerotierSwitcherProfile) (*AppViewModel, error) 
 		filePickerView: filepicker.New(),
 		remarkInput:    CreateRemarkInput("remark text", MaxRemarkLength),
 		autoJoinInput:  CreateRemarkInput("network id", MaxAutoJoinNetworkLength),
+		progressBar:    progress.New(progress.WithScaledGradient("#FF7CCB", "#FDFF8C")),
 	}
 	m.filePickerView.CurrentDirectory, _ = os.UserHomeDir()
 	return &m, nil
