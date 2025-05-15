@@ -54,8 +54,9 @@ func RenderPlanetListItem(planets []configs.ZerotierPlanetFile) []list.Item {
 func CreateActionListView() list.Model {
 	actionList := []list.Item{
 		ActionItem{Id: "activate", Name: "Activate", Desc: "Activate the planet file"},
-		ActionItem{Id: "rename", Name: "Rename", Desc: "Rename the planet file"},
 		ActionItem{Id: "view", Name: "View info", Desc: "View the info of planet file"},
+		ActionItem{Id: "rename", Name: "Rename", Desc: "Rename the planet file"},
+		ActionItem{Id: "auto_join", Name: "Auto join", Desc: "Set auto join network id"},
 		ActionItem{Id: "delete", Name: "Delete", Desc: "Delete the planet file"},
 	}
 	l := list.New(actionList, list.NewDefaultDelegate(), 40, 30)

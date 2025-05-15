@@ -20,6 +20,7 @@ var filePickerStyle = lipgloss.NewStyle().Margin(4, 2)
 var filePickerErrorStyle = lipgloss.NewStyle().Background(lipgloss.Color("9")).Foreground(lipgloss.Color("15"))
 
 const MaxRemarkLength = 64
+const MaxAutoJoinNetworkLength = 64
 
 type AppViewModel struct {
 	screen             string
@@ -31,6 +32,7 @@ type AppViewModel struct {
 	errorMessage       string
 	filePickerSelected string
 	remarkInput        textinput.Model
+	autoJoinInput      textinput.Model
 	confirmCursor      int
 }
 
@@ -73,9 +75,9 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.screen {
 			case "list":
 				return m, tea.Quit
-			case "action", "file_picker", "rename":
+			case "action", "file_picker":
 				m.screen = "list"
-			case "view_planet", "delete_confirm":
+			case "activate", "view_planet", "delete_confirm", "rename", "auto_join":
 				m.screen = "action"
 			}
 			return m, nil
@@ -137,6 +139,11 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.remarkInput.SetValue(m.planetFile.Remark)
 						m.remarkInput.SetCursor(0)
 						return m, textinput.Blink
+					case "auto_join":
+						m.screen = "auto_join"
+						m.autoJoinInput.SetValue(m.planetFile.AutoJoinNetwork)
+						m.autoJoinInput.SetCursor(0)
+						return m, textinput.Blink
 					case "view":
 						m.screen = "view_planet"
 						return m, nil
@@ -149,12 +156,17 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.screen = "delete_confirm"
 					}
 				}
-			case "rename":
-				newVal := m.remarkInput.Value()
-				if newVal == "" {
-					newVal = m.planetFile.RootEndpoint
+			case "rename", "auto_join":
+				if m.screen == "rename" {
+					newVal := m.remarkInput.Value()
+					if newVal == "" {
+						newVal = m.planetFile.RootEndpoint
+					}
+					m.planetFile.Remark = newVal
+				} else if m.screen == "auto_join" {
+					newVal := m.autoJoinInput.Value()
+					m.planetFile.AutoJoinNetwork = newVal
 				}
-				m.planetFile.Remark = newVal
 				err := m.savePlanetChange()
 				if err != nil {
 					m.errorMessage = fmt.Sprintf("Save profile error: %s", err.Error())
@@ -200,6 +212,8 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filePickerView, cmd = m.filePickerView.Update(msg)
 	case "rename":
 		m.remarkInput, cmd = m.remarkInput.Update(msg)
+	case "auto_join":
+		m.autoJoinInput, cmd = m.autoJoinInput.Update(msg)
 	}
 
 	return m, cmd
@@ -219,10 +233,18 @@ func (m AppViewModel) View() string {
 
 	case "rename":
 		s.WriteString(fmt.Sprintf(
-			"Write a remark for the planet file:\n\n%s\n(%d/%d)\n\n%s",
+			"Write a remark for the planet file:\n\n%s\n\n(%d/%d)\n\n%s\n\n",
 			m.remarkInput.View(),
 			len(m.remarkInput.Value()),
 			MaxRemarkLength,
+			"(esc to back)",
+		) + "\n")
+	case "auto_join":
+		s.WriteString(fmt.Sprintf(
+			"Set the network id:\n\n%s\n\n(%d/%d)\n\n%s\n\n",
+			m.autoJoinInput.View(),
+			len(m.autoJoinInput.Value()),
+			MaxAutoJoinNetworkLength,
 			"(esc to back)",
 		) + "\n")
 	case "view_planet":
@@ -361,6 +383,7 @@ func CreateAppView(cfg *configs.ZerotierSwitcherProfile) (*AppViewModel, error) 
 		actionList:     CreateActionListView(),
 		filePickerView: filepicker.New(),
 		remarkInput:    CreateRemarkInput("remark text", MaxRemarkLength),
+		autoJoinInput:  CreateRemarkInput("network id", MaxAutoJoinNetworkLength),
 	}
 	m.filePickerView.CurrentDirectory, _ = os.UserHomeDir()
 	return &m, nil
