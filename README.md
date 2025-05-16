@@ -1,5 +1,7 @@
 # Zerotier Planet 切换工具
 
+简体中文 | [English](./docs/README_en.md)
+
 一个简易的Zerotier One的Planet文件管理和切换工具，支持Linux/MacOS/Windows(10+)
 
 ![主程序菜单](docs/thumb1.jpg)
