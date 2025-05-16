@@ -144,3 +144,27 @@ func joinZeroTierNetwork(networkID string) error {
 
 	return nil
 }
+
+func GetCurrentPlanetHashFromOS() string {
+	planetPathFolder, err := configs.GetZerotierProfileFolder()
+	if err != nil {
+		return ""
+	}
+
+	planetPath := path.Join(planetPathFolder, "planet")
+	existingHashStr, err := getFileHash(planetPath)
+	if err != nil && !os.IsNotExist(err) {
+		return ""
+	}
+	return existingHashStr
+}
+
+func CheckIsCurrentPlanet(base64Planet, existingHashStr string) bool {
+	planetData, err := base64.StdEncoding.DecodeString(base64Planet)
+	if err != nil {
+		return false
+	}
+	newHash := md5.Sum(planetData)
+	newHashStr := hex.EncodeToString(newHash[:])
+	return existingHashStr != "" && newHashStr != "" && existingHashStr == newHashStr
+}

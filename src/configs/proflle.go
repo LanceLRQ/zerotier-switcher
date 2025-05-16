@@ -104,3 +104,20 @@ func (c ZerotierSwitcherProfile) WriteAppConfig() error {
 
 	return os.WriteFile(c.filePath, data, 0644)
 }
+
+// WriteAppConfigWithPath 写入配置(到指定路径)
+func (c ZerotierSwitcherProfile) WriteAppConfigWithPath(filePath string) error {
+	// 获取配置文件路径
+	data, err := json.MarshalIndent(c, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	// 确保目录存在
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	return os.WriteFile(filePath, data, 0644)
+}

@@ -12,8 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 var planetListStyle = lipgloss.NewStyle().Margin(1, 2)
@@ -35,9 +37,11 @@ const MaxRemarkLength = 64
 const MaxAutoJoinNetworkLength = 64
 
 type AppViewModel struct {
+	IsRunAsRoot        bool
 	Program            *tea.Program
 	screen             string
 	config             *configs.ZerotierSwitcherProfile
+	currentPlanetItem  PlanetItem
 	planetFile         *configs.ZerotierPlanetFile
 	planetList         list.Model
 	actionList         list.Model
@@ -52,6 +56,7 @@ type AppViewModel struct {
 	activateLock       bool
 	activateStepDesc   string
 	confirmCursor      int
+	currentWindowSize  tea.WindowSizeMsg
 }
 
 func (m AppViewModel) Init() tea.Cmd {
@@ -96,7 +101,7 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.screen {
 			case "list":
 				return m, tea.Quit
-			case "action", "file_picker":
+			case "action", "file_picker", "import_tip":
 				m.screen = "list"
 			case "activate", "view_planet", "delete_confirm", "rename", "auto_join":
 				m.screen = "action"
@@ -116,9 +121,24 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if p.Id == "add" {
 						m.screen = "file_picker"
 						return m, m.filePickerView.Init()
+					} else if p.Id == "backup" {
+						currentDir, err := os.Getwd()
+						if err != nil {
+							m.errorMessage = err.Error()
+						}
+						bakName := path.Join(currentDir, fmt.Sprintf("zerotier-switcher.backup.%d.json", time.Now().Unix()))
+						err = m.config.WriteAppConfigWithPath(bakName)
+						if err != nil {
+							m.errorMessage = err.Error()
+						}
+						m.successMessage = fmt.Sprintf("Saved to current folder")
+					} else if p.Id == "import" {
+						m.screen = "import_tip"
 					} else {
 						m.planetFile = p.Planet
+						m.currentPlanetItem = p
 						m.actionList.Title = m.getActionPageTitle()
+						m.actionList.SetItems(RenderActionListItem(m.currentPlanetItem, len(m.config.Planets) > 1))
 						m.screen = "action"
 					}
 				}
@@ -222,6 +242,9 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.errorMessage = ""
 				}
 			case "activate":
+				if !m.IsRunAsRoot {
+					break
+				}
 				m.activateStep = 0
 				cmd = m.progressBar.SetPercent(0)
 				m.screen = "activate_process"
@@ -242,7 +265,7 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					); err != nil {
 						m.Program.Send(progressMsg{
 							step:  currentStep,
-							desc:  filePickerErrorStyle.Width(50).Render(err.Error()),
+							desc:  filePickerErrorStyle.Width(m.currentWindowSize.Width).Render(err.Error()),
 							error: true,
 						})
 					}
@@ -250,6 +273,7 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tea.WindowSizeMsg:
+		m.currentWindowSize = msg
 		h, v := planetListStyle.GetFrameSize()
 		_, fv := filePickerStyle.GetFrameSize()
 		m.planetList.SetSize(msg.Width-h, msg.Height-v)
@@ -327,7 +351,11 @@ func (m AppViewModel) View() string {
 		s.WriteString(m.renderDeleteConfirm() + "\n\n(esc to back)")
 	case "activate":
 		s.WriteString("\n" + pad)
-		s.WriteString(m.renderActivateView() + "\n\n(esc to back)")
+		s.WriteString(m.renderActivateView() + "\n\n")
+		if m.IsRunAsRoot {
+			s.WriteString("ENTER to continue, ")
+		}
+		s.WriteString("ESC to back")
 	case "activate_process":
 		s.WriteString("\n" + pad + activateTitleStyle.Render("Processing"))
 		s.WriteString("\n\n" + pad + m.progressBar.View() + "\n\n")
@@ -336,6 +364,12 @@ func (m AppViewModel) View() string {
 			s.WriteString("\n\n(esc to back)")
 		}
 		s.WriteString("\n\n")
+	case "import_tip":
+		s.WriteString(fmt.Sprintf(
+			"%s\n\n%s\n\n;-)\n\n(esc to back)",
+			activateTitleStyle.Render("Please replace your config file to:"),
+			lipgloss.NewStyle().Width(m.currentWindowSize.Width).Render(path.Join(configs.GetDefaultConfigPath(), "profile.json")),
+		))
 	}
 
 	if m.errorMessage != "" {
@@ -470,6 +504,11 @@ func (m AppViewModel) renderActivateView() string {
 	}
 
 	sb.WriteString(fmt.Sprintf("\nJoin network: %s\n", m.planetFile.AutoJoinNetwork))
+
+	if !m.IsRunAsRoot {
+		sb.WriteString("\n" + filePickerErrorStyle.Render("You must run this program as root (administrator)"))
+	}
+
 	return sb.String()
 }
 
@@ -491,6 +530,7 @@ func (m AppViewModel) renderDeleteConfirm() string {
 
 func CreateAppView(cfg *configs.ZerotierSwitcherProfile) (*AppViewModel, error) {
 	m := AppViewModel{
+		IsRunAsRoot:    tools.IsRunAsRoot(),
 		screen:         "list",
 		config:         cfg,
 		planetList:     CreatePlanetListView(cfg),
