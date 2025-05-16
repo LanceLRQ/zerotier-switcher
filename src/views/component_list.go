@@ -77,7 +77,7 @@ func RenderActionListItem(pItem PlanetItem, deleteAble bool) []list.Item {
 		ActionItem{Id: "rename", Name: "Rename", Desc: "Rename the planet file"},
 		ActionItem{Id: "auto_join", Name: "Auto join", Desc: "Set auto join network id"},
 	}...)
-	if deleteAble {
+	if deleteAble && !pItem.IsCurrent {
 		actionList = append(actionList, ActionItem{Id: "delete", Name: "Delete", Desc: "Delete the planet file"})
 	}
 	return actionList
