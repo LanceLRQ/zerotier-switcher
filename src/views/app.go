@@ -107,6 +107,7 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = "action"
 			case "activate_process":
 				if !m.activateLock {
+					m.planetList.SetItems(RenderPlanetListItem(m.config.Planets))
 					m.screen = "list"
 				}
 			}
@@ -270,6 +271,11 @@ func (m AppViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						})
 					}
 				}()
+			case "activate_process":
+				if !m.activateLock {
+					m.planetList.SetItems(RenderPlanetListItem(m.config.Planets))
+					m.screen = "list"
+				}
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -335,7 +341,7 @@ func (m AppViewModel) View() string {
 			m.remarkInput.View(),
 			len(m.remarkInput.Value()),
 			MaxRemarkLength,
-			"(esc to back)",
+			"(ESC to back)",
 		) + "\n")
 	case "auto_join":
 		s.WriteString(fmt.Sprintf(
@@ -343,12 +349,12 @@ func (m AppViewModel) View() string {
 			m.autoJoinInput.View(),
 			len(m.autoJoinInput.Value()),
 			MaxAutoJoinNetworkLength,
-			"(esc to back)",
+			"(ESC to back)",
 		) + "\n")
 	case "view_planet":
-		s.WriteString(m.renderPlanetFileDetailView() + "\n\n(esc to back)")
+		s.WriteString(m.renderPlanetFileDetailView() + "\n\n(ESC to back)")
 	case "delete_confirm":
-		s.WriteString(m.renderDeleteConfirm() + "\n\n(esc to back)")
+		s.WriteString(m.renderDeleteConfirm() + "\n\n(ESC to back)")
 	case "activate":
 		s.WriteString("\n" + pad)
 		s.WriteString(m.renderActivateView() + "\n\n")
@@ -361,12 +367,12 @@ func (m AppViewModel) View() string {
 		s.WriteString("\n\n" + pad + m.progressBar.View() + "\n\n")
 		s.WriteString(m.activateStepDesc)
 		if !m.activateLock {
-			s.WriteString("\n\n(esc to back)")
+			s.WriteString("\n\n(ENTER to back)")
 		}
 		s.WriteString("\n\n")
 	case "import_tip":
 		s.WriteString(fmt.Sprintf(
-			"%s\n\n%s\n\n;-)\n\n(esc to back)",
+			"%s\n\n%s\n\n;-)\n\n(ESC to back)",
 			activateTitleStyle.Render("Please replace your config file to:"),
 			lipgloss.NewStyle().Width(m.currentWindowSize.Width).Render(path.Join(configs.GetDefaultConfigPath(), "profile.json")),
 		))

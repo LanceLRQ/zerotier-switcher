@@ -18,7 +18,7 @@ import (
 // ReplacePlanetAndJoinNetwork 替换 planet 文件并加入指定网络
 func ReplacePlanetAndJoinNetwork(base64Planet string, networkID string, callback func(int, string)) error {
 	// 1. 解码 base64 planet 数据
-	callback(1, "Decode planet")
+	callback(1, "Decoding planet")
 	planetData, err := base64.StdEncoding.DecodeString(base64Planet)
 	if err != nil {
 		return fmt.Errorf("base64 decode error: %v", err)
@@ -34,7 +34,7 @@ func ReplacePlanetAndJoinNetwork(base64Planet string, networkID string, callback
 	planetPath := path.Join(planetPathFolder, "planet")
 
 	// 3. 检查是否已是当前planet
-	callback(3, "Check planet file")
+	callback(3, "Checking planet file")
 	newHash := md5.Sum(planetData)
 	newHashStr := hex.EncodeToString(newHash[:])
 	existingHashStr, err := getFileHash(planetPath)
@@ -46,19 +46,19 @@ func ReplacePlanetAndJoinNetwork(base64Planet string, networkID string, callback
 	}
 
 	// 4. 写入新的 planet 文件
-	callback(4, "Write planet file")
+	callback(4, "Writing planet file")
 	if err := os.WriteFile(planetPath, planetData, 0644); err != nil {
 		return fmt.Errorf("write planet file error: %v", err)
 	}
 
 	// 5. 重启 ZeroTier 服务
-	callback(5, "Restart zerotier service")
+	callback(5, "Restarting zerotier service, please wait")
 	if err := restartZeroTierService(); err != nil {
 		return fmt.Errorf("restart zerotier service error: %v", err)
 	}
 
 	if networkID != "" {
-		callback(6, "Restart zerotier service")
+		callback(6, "Restarting zerotier service, please wait")
 		// 6. 加入指定网络
 		if err := joinZeroTierNetwork(networkID); err != nil {
 			return fmt.Errorf("join network error: %v", err)
