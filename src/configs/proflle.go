@@ -43,7 +43,7 @@ func GetDefaultConfigPath() string {
 
 // GetPlanetFilePath 获取Zerotier的planet文件位置
 func GetPlanetFilePath(cfg *ZerotierSwitcherProfile) string {
-	return fmt.Sprintf("%s/planet", cfg.ZerotierProfilePath)
+	return path.Join(cfg.ZerotierProfilePath, "planet")
 }
 
 func GetZerotierProfileFolder() (string, error) {
