@@ -1,15 +1,10 @@
 //go:build windows
-// +build windows
 
 package tools
 
 import (
 	"fmt"
 	"golang.org/x/sys/windows"
-	"golang.org/x/sys/windows/svc"
-	"golang.org/x/sys/windows/svc/mgr"
-	"os"
-	"time"
 )
 
 func IsRunAsRoot() bool {
