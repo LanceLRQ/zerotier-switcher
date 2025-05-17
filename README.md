@@ -8,7 +8,9 @@
 
 ## 安装
 ```shell
-go install https://github.com/LanceLRQ/zerotier-switcher
+go install github.com/LanceLRQ/zerotier-switcher@latest
+# 使用：
+zerotier-switcher
 ```
 或者自行下载并编译
 

@@ -8,7 +8,9 @@ A simple tool for managing and switching Planet files for Zerotier One, compatib
 
 ## Installation
 ```shell
-go install https://github.com/LanceLRQ/zerotier-switcher
+go install github.com/LanceLRQ/zerotier-switcher@latest
+# Usage:
+zerotier-switcher
 ```
 Alternatively, download and compile it manually:
 
